@@ -31,6 +31,7 @@ function CircularProgress({ progress }: { progress: number }) {
   );
 }
 import { CATEGORIES, FORMATS } from '@/lib/config';
+import { isImageUrl, isPdfUrl, getBlobProxyUrl, getFileName, getFileExtension, getDomain } from '@/lib/files';
 
 const getFormatIcon = (format: string) => {
   switch (format) {
@@ -42,29 +43,6 @@ const getFormatIcon = (format: string) => {
     case 'Image/Infographic': return ImageIcon;
     case 'Worksheet': return File;
     default: return File;
-  }
-};
-
-const isImageUrl = (url: string) => {
-  return /\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)(\?|$)/i.test(url);
-};
-
-const getFileName = (url: string) => {
-  try {
-    const path = new URL(url).pathname;
-    return decodeURIComponent(path.split('/').pop() || 'Attached File');
-  } catch {
-    return 'Attached File';
-  }
-};
-
-const getBlobProxyUrl = (url: string) => `/api/blob?url=${encodeURIComponent(url)}`;
-
-const getDomain = (url: string) => {
-  try {
-    return new URL(url).hostname.replace('www.', '');
-  } catch {
-    return '';
   }
 };
 
@@ -556,20 +534,60 @@ export default function ResourceDetailClient({ initialResource }: { initialResou
                 </div>
               )}
 
-              {/* Non-Image File Attachment */}
-              {resource.blobUrl && !isImageUrl(resource.blobUrl) && (
-                <div className="mb-6 flex items-center gap-3 px-5 py-4 bg-[#F9F8F6] rounded-2xl border border-[#E8E6E1]">
+              {/* Inline PDF Preview */}
+              {resource.blobUrl && isPdfUrl(resource.blobUrl) && (
+                <div className="mb-6 rounded-2xl border border-[#E8E6E1] overflow-hidden">
+                  <div className="flex items-center gap-3 px-4 py-3 bg-[#F9F8F6] border-b border-[#E8E6E1]">
+                    <FileText className="w-4 h-4 text-[#8F9F8A] flex-shrink-0" />
+                    <span className="text-sm font-medium text-[#4A4A4A] truncate">{getFileName(resource.blobUrl)}</span>
+                    <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+                      <a
+                        href={getBlobProxyUrl(resource.blobUrl)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#6B6B6B] hover:text-[#4A4A4A] bg-white hover:bg-[#F0EFEA] border border-[#E8E6E1] rounded-lg transition-colors"
+                      >
+                        <Maximize2 className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Open in new tab</span>
+                      </a>
+                      <a
+                        href={getBlobProxyUrl(resource.blobUrl, { download: true })}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[#8F9F8A] hover:bg-[#7A8A75] text-white rounded-lg transition-colors"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Download</span>
+                      </a>
+                    </div>
+                  </div>
+                  <iframe
+                    src={`${getBlobProxyUrl(resource.blobUrl)}#view=FitH`}
+                    title={`Preview of ${getFileName(resource.blobUrl)}`}
+                    className="w-full h-[75vh] bg-white"
+                  />
+                </div>
+              )}
+
+              {/* Non-Image, Non-PDF File Attachment */}
+              {resource.blobUrl && !isImageUrl(resource.blobUrl) && !isPdfUrl(resource.blobUrl) && (
+                <div className="mb-6 flex flex-wrap items-center gap-3 px-5 py-4 bg-[#F9F8F6] rounded-2xl border border-[#E8E6E1]">
                   <div className="p-2.5 bg-white rounded-xl border border-[#E8E6E1] text-[#8F9F8A]">
                     <Paperclip className="w-5 h-5" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-[#4A4A4A] truncate">{getFileName(resource.blobUrl)}</p>
-                    <p className="text-xs text-[#8C8C8C]">Attached file</p>
+                    <p className="text-xs text-[#8C8C8C]">{getFileExtension(resource.blobUrl) || 'Attached'} file</p>
                   </div>
                   <a
                     href={getBlobProxyUrl(resource.blobUrl)}
                     target="_blank"
                     rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-[#F0EFEA] text-[#6B6B6B] border border-[#E8E6E1] text-sm rounded-xl font-medium transition-colors"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Open
+                  </a>
+                  <a
+                    href={getBlobProxyUrl(resource.blobUrl, { download: true })}
                     className="flex items-center gap-2 px-4 py-2 bg-[#8F9F8A] hover:bg-[#7A8A75] text-white text-sm rounded-xl font-medium transition-colors"
                   >
                     <Download className="w-4 h-4" />
@@ -641,8 +659,8 @@ export default function ResourceDetailClient({ initialResource }: { initialResou
                   )}
                   {resource.blobUrl && (
                     <a
-                      href={getBlobProxyUrl(resource.blobUrl)}
-                      target="_blank"
+                      href={isImageUrl(resource.blobUrl) ? getBlobProxyUrl(resource.blobUrl) : getBlobProxyUrl(resource.blobUrl, { download: true })}
+                      target={isImageUrl(resource.blobUrl) ? '_blank' : undefined}
                       rel="noopener noreferrer"
                       className="flex items-center gap-2 px-6 py-2.5 bg-[#8F9F8A] hover:bg-[#7A8A75] text-white rounded-xl font-medium transition-colors"
                     >
@@ -781,11 +799,14 @@ export default function ResourceDetailClient({ initialResource }: { initialResou
               <div>
                 <dt className="text-[#8C8C8C] mb-1">Added On</dt>
                 <dd className="font-medium text-[#4A4A4A]">
-                  {new Date(resource.addedAt).toLocaleDateString('en-US', {
+                  {new Date(resource.addedAt).toLocaleDateString('en-GB', {
                     year: 'numeric',
                     month: 'long',
                     day: 'numeric'
                   })}
+                  <span className="block text-xs font-normal text-[#8C8C8C] mt-0.5">
+                    {formatDistanceToNow(new Date(resource.addedAt))} ago
+                  </span>
                 </dd>
               </div>
               <div>

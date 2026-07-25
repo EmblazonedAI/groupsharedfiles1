@@ -3,9 +3,11 @@
 import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Filter, ArrowDownUp, FileText, Video, Headphones, BookOpen, Link as LinkIcon, Image as ImageIcon, File, Heart, MessageCircle, Leaf, Plus, X, Paperclip, Trash2, Globe, ExternalLink } from 'lucide-react';
-import { CATEGORIES, FORMATS } from '@/lib/config';
-import { formatDistanceToNow } from 'date-fns';
+import { Search, FileText, Video, Headphones, BookOpen, Link as LinkIcon, Image as ImageIcon, File, Heart, MessageCircle, Leaf, Plus, X, Paperclip, Trash2, ExternalLink, LayoutGrid, List } from 'lucide-react';
+import { FORMATS } from '@/lib/config';
+import { formatDistanceToNow, format as formatDate } from 'date-fns';
+import PdfThumbnail from '@/components/PdfThumbnail';
+import { isImageUrl, isPdfUrl, getBlobProxyUrl, getFileName, getFileExtension, getDomain } from '@/lib/files';
 
 const getFormatIcon = (format: string) => {
   switch (format) {
@@ -20,16 +22,19 @@ const getFormatIcon = (format: string) => {
   }
 };
 
-const isImageUrl = (url: string) => /\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)(\?|$)/i.test(url);
-const getBlobProxyUrl = (url: string) => `/api/blob?url=${encodeURIComponent(url)}`;
-const getDomain = (url: string) => { try { return new URL(url).hostname.replace('www.', ''); } catch { return ''; } };
+const openInNewTab = (e: React.MouseEvent, url: string) => {
+  e.preventDefault();
+  e.stopPropagation();
+  window.open(url, '_blank', 'noopener,noreferrer');
+};
 
 export default function LibraryClient({ initialResources, folders }: { initialResources: any[], folders: any[] }) {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedFormat, setSelectedFormat] = useState<string | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'title'>('newest');
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'title' | 'loved'>('newest');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [allCategories, setAllCategories] = useState<string[]>([]);
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -37,7 +42,13 @@ export default function LibraryClient({ initialResources, folders }: { initialRe
 
   useEffect(() => {
     fetch('/api/categories').then(r => r.json()).then(setAllCategories).catch(() => { });
+    if (localStorage.getItem('library-view') === 'list') setViewMode('list');
   }, []);
+
+  const changeView = (mode: 'grid' | 'list') => {
+    setViewMode(mode);
+    localStorage.setItem('library-view', mode);
+  };
 
   const handleAddCategory = async () => {
     if (!newCategoryName.trim()) return;
@@ -65,6 +76,8 @@ export default function LibraryClient({ initialResources, folders }: { initialRe
       }
     } catch (err) { console.error(err); }
   };
+
+  const hasUnsorted = useMemo(() => initialResources.some(r => !r.folderId), [initialResources]);
 
   const filteredResources = useMemo(() => {
     let result = [...initialResources];
@@ -98,11 +111,42 @@ export default function LibraryClient({ initialResources, folders }: { initialRe
       if (sortBy === 'newest') return new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime();
       if (sortBy === 'oldest') return new Date(a.addedAt).getTime() - new Date(b.addedAt).getTime();
       if (sortBy === 'title') return a.title.localeCompare(b.title);
+      if (sortBy === 'loved') return (b.likeCount + b.loveCount) - (a.likeCount + a.loveCount);
       return 0;
     });
 
     return result;
   }, [initialResources, search, selectedCategory, selectedFormat, selectedFolder, sortBy]);
+
+  const renderThumbnail = (resource: any, className: string, showPageCount = true) => {
+    if (resource.blobUrl && isImageUrl(resource.blobUrl)) {
+      return (
+        <div className={`${className} bg-[#F9F8F6] overflow-hidden`}>
+          <img
+            src={getBlobProxyUrl(resource.blobUrl)}
+            alt={resource.title}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          />
+        </div>
+      );
+    }
+    if (resource.blobUrl && isPdfUrl(resource.blobUrl)) {
+      return <PdfThumbnail src={getBlobProxyUrl(resource.blobUrl)} className={className} showPageCount={showPageCount} />;
+    }
+    if (resource.url) {
+      return (
+        <div className={`${className} bg-[#F0EFEA] overflow-hidden`}>
+          <img
+            src={resource.ogImage || `https://image.thum.io/get/width/1200/${resource.url}`}
+            alt=""
+            className="w-full h-full object-cover object-top group-hover:scale-[1.02] transition-transform duration-500"
+            onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = 'none'; }}
+          />
+        </div>
+      );
+    }
+    return null;
+  };
 
   return (
     <div className="space-y-8">
@@ -127,6 +171,14 @@ export default function LibraryClient({ initialResources, folders }: { initialRe
 
           <div className="flex gap-2">
             <select
+              value={selectedFormat ?? ''}
+              onChange={(e) => setSelectedFormat(e.target.value || null)}
+              className="px-3 py-2 rounded-xl border border-[#E8E6E1] bg-white text-sm text-[#4A4A4A] focus:outline-none focus:ring-2 focus:ring-[#8F9F8A]/50"
+            >
+              <option value="">All formats</option>
+              {FORMATS.map(f => <option key={f} value={f}>{f}</option>)}
+            </select>
+            <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
               className="px-3 py-2 rounded-xl border border-[#E8E6E1] bg-white text-sm text-[#4A4A4A] focus:outline-none focus:ring-2 focus:ring-[#8F9F8A]/50"
@@ -134,12 +186,29 @@ export default function LibraryClient({ initialResources, folders }: { initialRe
               <option value="newest">Newest</option>
               <option value="oldest">Oldest</option>
               <option value="title">Title A-Z</option>
+              <option value="loved">Most loved</option>
             </select>
+            <div className="flex rounded-xl border border-[#E8E6E1] bg-white overflow-hidden flex-shrink-0">
+              <button
+                onClick={() => changeView('grid')}
+                className={`px-3 py-2 transition-colors ${viewMode === 'grid' ? 'bg-[#8F9F8A] text-white' : 'text-[#8C8C8C] hover:bg-[#F0EFEA]'}`}
+                title="Grid view"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => changeView('list')}
+                className={`px-3 py-2 transition-colors ${viewMode === 'list' ? 'bg-[#8F9F8A] text-white' : 'text-[#8C8C8C] hover:bg-[#F0EFEA]'}`}
+                title="List view"
+              >
+                <List className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Category Filters */}
       <div className="flex flex-wrap gap-2 items-center">
         <button
           onClick={() => setSelectedCategory(null)}
@@ -200,7 +269,42 @@ export default function LibraryClient({ initialResources, folders }: { initialRe
         </button>
       </div>
 
-      {/* Grid */}
+      {/* Folder Filters */}
+      {folders.length > 0 && (
+        <div className="flex flex-wrap gap-2 items-center -mt-4">
+          <button
+            onClick={() => setSelectedFolder(null)}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${!selectedFolder ? 'bg-[#8F9F8A] text-white' : 'bg-white border border-[#E8E6E1] text-[#6B6B6B] hover:bg-[#F0EFEA]'}`}
+          >
+            All Folders
+          </button>
+          {folders.map((folder: any) => (
+            <button
+              key={folder.id}
+              onClick={() => setSelectedFolder(folder.id === selectedFolder ? null : folder.id)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors flex items-center gap-1.5 ${folder.id === selectedFolder ? 'bg-[#8F9F8A] text-white' : 'bg-white border border-[#E8E6E1] text-[#6B6B6B] hover:bg-[#F0EFEA]'}`}
+            >
+              {folder.emoji && <span>{folder.emoji}</span>}
+              <span>{folder.name}</span>
+            </button>
+          ))}
+          {hasUnsorted && (
+            <button
+              onClick={() => setSelectedFolder(selectedFolder === 'unsorted' ? null : 'unsorted')}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${selectedFolder === 'unsorted' ? 'bg-[#8F9F8A] text-white' : 'bg-white border border-dashed border-[#E8E6E1] text-[#8C8C8C] hover:bg-[#F0EFEA]'}`}
+            >
+              Unsorted
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Result count */}
+      <p className="text-xs text-[#8C8C8C] -mt-4">
+        Showing {filteredResources.length} of {initialResources.length} resources
+      </p>
+
+      {/* Grid / List */}
       {filteredResources.length === 0 ? (
         <motion.div
           initial={{ opacity: 0 }}
@@ -213,6 +317,91 @@ export default function LibraryClient({ initialResources, folders }: { initialRe
           <h3 className="text-xl font-serif text-[#4A4A4A] mb-2">No resources found</h3>
           <p className="text-[#8C8C8C]">Try adjusting your search or filters, or add a new resource.</p>
         </motion.div>
+      ) : viewMode === 'list' ? (
+        <div className="space-y-3">
+          <AnimatePresence>
+            {filteredResources.map((resource) => {
+              const Icon = getFormatIcon(resource.format);
+              return (
+                <motion.div
+                  layout
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.2 }}
+                  key={resource.id}
+                >
+                  <Link href={`/resource/${resource.id}`}>
+                    <div className="bg-white rounded-2xl border border-[#E8E6E1] shadow-sm hover:shadow-md transition-all cursor-pointer flex items-center gap-4 p-4 group">
+                      <div className="w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 border border-[#E8E6E1]">
+                        {renderThumbnail(resource, 'w-16 h-16', false) || (
+                          <div className="w-full h-full bg-[#F0EFEA] flex items-center justify-center text-[#8F9F8A]">
+                            <Icon className="w-6 h-6" />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex-grow min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-medium text-[#4A4A4A] truncate group-hover:text-[#8F9F8A] transition-colors">
+                            {resource.title}
+                          </h3>
+                          {resource.folder && (
+                            <span className="hidden sm:inline-flex items-center gap-1 bg-[#F9F8F6] px-2 py-0.5 rounded-md text-[10px] font-medium text-[#6B6B6B] border border-[#E8E6E1] flex-shrink-0">
+                              {resource.folder.emoji} {resource.folder.name}
+                            </span>
+                          )}
+                        </div>
+                        {resource.description && (
+                          <p className="text-sm text-[#6B6B6B] truncate mt-0.5">{resource.description}</p>
+                        )}
+                        <div className="flex items-center gap-2 text-xs text-[#8C8C8C] mt-1.5 flex-wrap">
+                          <span className="uppercase tracking-wider font-medium">{resource.format}</span>
+                          <span aria-hidden>·</span>
+                          <span>{resource.category}</span>
+                          <span aria-hidden>·</span>
+                          <span title={`${formatDistanceToNow(new Date(resource.addedAt))} ago`}>
+                            {formatDate(new Date(resource.addedAt), 'd MMM yyyy')}
+                          </span>
+                          <span aria-hidden>·</span>
+                          <span className="inline-flex items-center gap-1">
+                            <Heart className="w-3 h-3" /> {resource.likeCount + resource.loveCount}
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <MessageCircle className="w-3 h-3" /> {resource.comments?.length || 0}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {resource.blobUrl && (
+                          <button
+                            onClick={(e) => openInNewTab(e, getBlobProxyUrl(resource.blobUrl))}
+                            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-[#F0EFEA] hover:bg-[#8F9F8A] text-[#8F9F8A] hover:text-white rounded-xl transition-colors"
+                            title={`Open ${getFileName(resource.blobUrl)}`}
+                          >
+                            <Paperclip className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Open {getFileExtension(resource.blobUrl) || 'file'}</span>
+                          </button>
+                        )}
+                        {resource.url && (
+                          <button
+                            onClick={(e) => openInNewTab(e, resource.url)}
+                            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-[#F9F8F6] hover:bg-[#F0EFEA] text-[#6B6B6B] rounded-xl border border-[#E8E6E1] transition-colors"
+                            title={`Visit ${getDomain(resource.url)}`}
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Visit</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </Link>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <AnimatePresence>
@@ -229,25 +418,7 @@ export default function LibraryClient({ initialResources, folders }: { initialRe
                 >
                   <Link href={`/resource/${resource.id}`}>
                     <div className="bg-white rounded-3xl border border-[#E8E6E1] shadow-sm hover:shadow-md transition-all cursor-pointer h-full flex flex-col group overflow-hidden">
-                      {/* Image Thumbnail: blob image, OG image, or site screenshot */}
-                      {resource.blobUrl && isImageUrl(resource.blobUrl) ? (
-                        <div className="w-full h-40 bg-[#F9F8F6] overflow-hidden">
-                          <img
-                            src={getBlobProxyUrl(resource.blobUrl)}
-                            alt={resource.title}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          />
-                        </div>
-                      ) : resource.url ? (
-                        <div className="w-full h-40 bg-[#F0EFEA] overflow-hidden">
-                          <img
-                            src={resource.ogImage || `https://image.thum.io/get/width/1200/${resource.url}`}
-                            alt=""
-                            className="w-full h-full object-cover object-top group-hover:scale-[1.02] transition-transform duration-500"
-                            onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = 'none'; }}
-                          />
-                        </div>
-                      ) : null}
+                      {renderThumbnail(resource, 'w-full h-40')}
 
                       <div className="p-6 flex flex-col flex-grow">
                         <div className="flex justify-between items-start mb-4">
@@ -275,9 +446,28 @@ export default function LibraryClient({ initialResources, folders }: { initialRe
                           {resource.description || 'No description provided.'}
                         </p>
 
-                        {/* URL domain preview */}
+                        {/* Quick open: attached file */}
+                        {resource.blobUrl && (
+                          <button
+                            onClick={(e) => openInNewTab(e, getBlobProxyUrl(resource.blobUrl))}
+                            className="w-full flex items-center gap-2 text-xs text-[#8F9F8A] bg-[#F0EFEA] hover:bg-[#8F9F8A] hover:text-white px-3 py-2 rounded-lg mb-3 transition-colors group/file"
+                            title={`Open ${getFileName(resource.blobUrl)} in a new tab`}
+                          >
+                            <Paperclip className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span className="truncate font-medium">{getFileName(resource.blobUrl)}</span>
+                            <span className="ml-auto flex items-center gap-1 flex-shrink-0 font-semibold uppercase tracking-wider">
+                              Open <ExternalLink className="w-3 h-3" />
+                            </span>
+                          </button>
+                        )}
+
+                        {/* Quick open: external link */}
                         {resource.url && (
-                          <div className="flex items-center gap-2 text-xs text-[#8C8C8C] bg-[#F9F8F6] px-3 py-1.5 rounded-lg mb-3">
+                          <button
+                            onClick={(e) => openInNewTab(e, resource.url)}
+                            className="w-full flex items-center gap-2 text-xs text-[#8C8C8C] bg-[#F9F8F6] hover:bg-[#F0EFEA] hover:text-[#4A4A4A] px-3 py-2 rounded-lg mb-3 transition-colors"
+                            title={`Visit ${getDomain(resource.url)} in a new tab`}
+                          >
                             <img
                               src={`https://www.google.com/s2/favicons?domain=${getDomain(resource.url)}&sz=16`}
                               alt=""
@@ -285,16 +475,10 @@ export default function LibraryClient({ initialResources, folders }: { initialRe
                               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                             />
                             <span className="truncate">{getDomain(resource.url)}</span>
-                            <ExternalLink className="w-3 h-3 flex-shrink-0" />
-                          </div>
-                        )}
-
-                        {/* Non-image file attached */}
-                        {resource.blobUrl && !isImageUrl(resource.blobUrl) && (
-                          <div className="flex items-center gap-2 text-xs text-[#8F9F8A] bg-[#F0EFEA] px-3 py-1.5 rounded-lg mb-3">
-                            <Paperclip className="w-3.5 h-3.5" />
-                            <span className="truncate">File attached</span>
-                          </div>
+                            <span className="ml-auto flex items-center gap-1 flex-shrink-0 font-semibold uppercase tracking-wider">
+                              Visit <ExternalLink className="w-3 h-3" />
+                            </span>
+                          </button>
                         )}
 
                         <div className="flex flex-wrap gap-1.5 mb-4">
@@ -321,7 +505,9 @@ export default function LibraryClient({ initialResources, folders }: { initialRe
                               <span>{resource.comments?.length || 0}</span>
                             </div>
                           </div>
-                          <span>{formatDistanceToNow(new Date(resource.addedAt))} ago</span>
+                          <span title={`${formatDistanceToNow(new Date(resource.addedAt))} ago`}>
+                            {formatDate(new Date(resource.addedAt), 'd MMM yyyy')}
+                          </span>
                         </div>
                       </div>
                     </div>
