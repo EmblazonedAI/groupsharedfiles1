@@ -1,14 +1,16 @@
 import { db } from '@/db';
 import { categories, resources } from '@/db/schema';
-import { asc, desc } from 'drizzle-orm';
+import { asc, desc, isNull } from 'drizzle-orm';
+import { ensureSchema } from '@/lib/ensure-schema';
 import CategoriesClient from './CategoriesClient';
 
 export const dynamic = 'force-dynamic';
 
 export default async function CategoriesPage() {
+  await ensureSchema();
   const [dbCategories, allResources] = await Promise.all([
     db.select().from(categories).orderBy(asc(categories.name)),
-    db.query.resources.findMany({ orderBy: [desc(resources.addedAt)] }),
+    db.query.resources.findMany({ where: isNull(resources.deletedAt), orderBy: [desc(resources.addedAt)] }),
   ]);
 
   // Union of the official category list and any labels still on resources,

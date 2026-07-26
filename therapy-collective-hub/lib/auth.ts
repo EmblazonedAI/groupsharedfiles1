@@ -1,28 +1,39 @@
 import { jwtVerify, SignJWT } from 'jose';
 
-const getSecret = (key?: string) => new TextEncoder().encode(key || process.env.SHARED_PASSWORD || 'default-secret-do-not-use-in-prod');
+// Tokens are signed with AUTH_SECRET when set (recommended: a long random
+// string in the Vercel env vars), falling back to the shared password so
+// nothing breaks if AUTH_SECRET isn't configured. Verification tries every
+// candidate so adding AUTH_SECRET later doesn't log existing sessions out.
+const encode = (key: string) => new TextEncoder().encode(key);
+
+const signingKey = () =>
+  process.env.AUTH_SECRET || process.env.SHARED_PASSWORD || 'default-secret-do-not-use-in-prod';
+
+const verificationKeys = () => {
+  const keys = [
+    process.env.AUTH_SECRET,
+    process.env.SHARED_PASSWORD || 'default-secret-do-not-use-in-prod',
+    process.env.SHARED_PASSWORD_2,
+  ].filter((k): k is string => !!k);
+  return [...new Set(keys)];
+};
 
 export async function signToken(payload: any) {
   return new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('30d')
-    .sign(getSecret());
+    .sign(encode(signingKey()));
 }
 
 export async function verifyToken(token: string) {
-  try {
-    const { payload } = await jwtVerify(token, getSecret());
-    return payload;
-  } catch (err) {
-    if (process.env.SHARED_PASSWORD_2) {
-      try {
-        const { payload } = await jwtVerify(token, getSecret(process.env.SHARED_PASSWORD_2));
-        return payload;
-      } catch (err2) {
-        return null;
-      }
+  for (const key of verificationKeys()) {
+    try {
+      const { payload } = await jwtVerify(token, encode(key));
+      return payload;
+    } catch {
+      // try the next candidate key
     }
-    return null;
   }
+  return null;
 }

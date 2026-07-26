@@ -2,8 +2,9 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, FileText, Video, Headphones, BookOpen, Link as LinkIcon, Image as ImageIcon, File, Heart, MessageCircle, Leaf, Plus, X, Paperclip, Trash2, ExternalLink, LayoutGrid, List } from 'lucide-react';
+import { Search, FileText, Video, Headphones, BookOpen, Link as LinkIcon, Image as ImageIcon, File, Heart, MessageCircle, Leaf, Plus, X, Paperclip, Trash2, ExternalLink, LayoutGrid, List, Download, RotateCcw, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import { FORMATS } from '@/lib/config';
 import { formatDistanceToNow, format as formatDate } from 'date-fns';
 import PdfThumbnail from '@/components/PdfThumbnail';
@@ -28,21 +29,71 @@ const openInNewTab = (e: React.MouseEvent, url: string) => {
   window.open(url, '_blank', 'noopener,noreferrer');
 };
 
-export default function LibraryClient({ initialResources, initialCategory }: { initialResources: any[], initialCategory?: string | null }) {
+export default function LibraryClient({
+  initialResources,
+  initialCategory,
+  initialTag,
+  justDeletedId,
+  trashedResources,
+}: {
+  initialResources: any[],
+  initialCategory?: string | null,
+  initialTag?: string | null,
+  justDeletedId?: string | null,
+  trashedResources?: any[],
+}) {
+  const router = useRouter();
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(initialCategory || null);
   const [selectedFormat, setSelectedFormat] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'title' | 'loved'>('newest');
+  const [selectedTag, setSelectedTag] = useState<string | null>(initialTag || null);
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'title' | 'loved' | 'discussed'>('newest');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [allCategories, setAllCategories] = useState<string[]>([]);
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [removeMode, setRemoveMode] = useState(false);
+  const [trash, setTrash] = useState<any[]>(trashedResources || []);
+  const [showTrash, setShowTrash] = useState(false);
+  const [undoDismissed, setUndoDismissed] = useState(false);
+  const [restoring, setRestoring] = useState<string | null>(null);
+  // "New since your last visit" is computed purely from this browser's
+  // localStorage — nothing is sent to the server and no cookies are set.
+  const [newSince, setNewSince] = useState<number | null>(null);
 
   useEffect(() => {
     fetch('/api/categories').then(r => r.json()).then(setAllCategories).catch(() => { });
     if (localStorage.getItem('library-view') === 'list') setViewMode('list');
+    const lastVisit = parseInt(localStorage.getItem('library-last-visit') || '0', 10);
+    if (lastVisit) setNewSince(lastVisit);
+    localStorage.setItem('library-last-visit', String(Date.now()));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const isNew = (r: any) => newSince != null && new Date(r.addedAt).getTime() > newSince;
+  const newCount = useMemo(
+    () => (newSince == null ? 0 : initialResources.filter(isNew).length),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [initialResources, newSince]
+  );
+
+  const justDeleted = justDeletedId ? trash.find(t => t.id === justDeletedId) : null;
+
+  const handleRestore = async (id: string) => {
+    setRestoring(id);
+    try {
+      const res = await fetch(`/api/resources/${id}/restore`, { method: 'POST' });
+      if (res.ok) {
+        setTrash(prev => prev.filter(t => t.id !== id));
+        setUndoDismissed(true);
+        router.refresh();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setRestoring(null);
+    }
+  };
 
   const changeView = (mode: 'grid' | 'list') => {
     setViewMode(mode);
@@ -96,16 +147,27 @@ export default function LibraryClient({ initialResources, initialCategory }: { i
       result = result.filter(r => r.format === selectedFormat);
     }
 
+    if (selectedTag) {
+      result = result.filter(r => r.tags?.includes(selectedTag));
+    }
+
+    const lastCommentAt = (r: any) =>
+      r.comments?.length ? Math.max(...r.comments.map((c: any) => new Date(c.createdAt).getTime())) : 0;
+
     result.sort((a, b) => {
       if (sortBy === 'newest') return new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime();
       if (sortBy === 'oldest') return new Date(a.addedAt).getTime() - new Date(b.addedAt).getTime();
       if (sortBy === 'title') return a.title.localeCompare(b.title);
       if (sortBy === 'loved') return (b.likeCount + b.loveCount) - (a.likeCount + a.loveCount);
+      if (sortBy === 'discussed') {
+        return lastCommentAt(b) - lastCommentAt(a)
+          || new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime();
+      }
       return 0;
     });
 
     return result;
-  }, [initialResources, search, selectedCategory, selectedFormat, sortBy]);
+  }, [initialResources, search, selectedCategory, selectedFormat, selectedTag, sortBy]);
 
   const renderThumbnail = (resource: any, className: string, showPageCount = true) => {
     if (resource.blobUrl && isImageUrl(resource.blobUrl)) {
@@ -139,6 +201,63 @@ export default function LibraryClient({ initialResources, initialCategory }: { i
 
   return (
     <div className="space-y-8">
+      {/* Undo banner after a delete */}
+      <AnimatePresence>
+        {justDeleted && !undoDismissed && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="flex flex-wrap items-center gap-3 px-5 py-3.5 bg-white border border-[#E8E6E1] rounded-2xl shadow-sm"
+          >
+            <Trash2 className="w-4 h-4 text-[#8C8C8C] flex-shrink-0" />
+            <span className="text-sm text-[#4A4A4A]">
+              <span className="font-medium">“{justDeleted.title}”</span> moved to Recently deleted.
+            </span>
+            <button
+              onClick={() => handleRestore(justDeleted.id)}
+              disabled={restoring === justDeleted.id}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[#8F9F8A] hover:bg-[#7A8A75] text-white rounded-lg transition-colors disabled:opacity-50"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              {restoring === justDeleted.id ? 'Restoring…' : 'Undo'}
+            </button>
+            <span className="text-xs text-[#8C8C8C]">You can restore it for 30 days.</span>
+            <button
+              onClick={() => setUndoDismissed(true)}
+              className="ml-auto p-1.5 text-[#8C8C8C] hover:text-[#4A4A4A] rounded-lg"
+              title="Dismiss"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* New since last visit (computed on this device only) */}
+      <AnimatePresence>
+        {newCount > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="flex items-center gap-3 px-5 py-3 bg-[#F0EFEA] border border-[#E8E6E1] rounded-2xl"
+          >
+            <Sparkles className="w-4 h-4 text-[#8F9F8A] flex-shrink-0" />
+            <span className="text-sm text-[#4A4A4A]">
+              {newCount} new resource{newCount === 1 ? '' : 's'} since your last visit — look for the <span className="inline-block bg-[#8F9F8A] text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-md align-middle">NEW</span> badge.
+            </span>
+            <button
+              onClick={() => setNewSince(null)}
+              className="ml-auto p-1.5 text-[#8C8C8C] hover:text-[#4A4A4A] rounded-lg"
+              title="Dismiss"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header & Controls */}
       <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
         <div>
@@ -176,6 +295,7 @@ export default function LibraryClient({ initialResources, initialCategory }: { i
               <option value="oldest">Oldest</option>
               <option value="title">Title A-Z</option>
               <option value="loved">Most loved</option>
+              <option value="discussed">Recently discussed</option>
             </select>
             <div className="flex rounded-xl border border-[#E8E6E1] bg-white overflow-hidden flex-shrink-0">
               <button
@@ -258,10 +378,30 @@ export default function LibraryClient({ initialResources, initialCategory }: { i
         </button>
       </div>
 
-      {/* Result count */}
-      <p className="text-xs text-[#8C8C8C] -mt-4">
-        Showing {filteredResources.length} of {initialResources.length} resources
-      </p>
+      {/* Result count & active tag + backup download */}
+      <div className="flex flex-wrap items-center gap-3 -mt-4">
+        <p className="text-xs text-[#8C8C8C]">
+          Showing {filteredResources.length} of {initialResources.length} resources
+        </p>
+        {selectedTag && (
+          <button
+            onClick={() => setSelectedTag(null)}
+            className="flex items-center gap-1.5 px-3 py-1 bg-[#8F9F8A] text-white rounded-full text-xs font-medium hover:bg-[#7A8A75] transition-colors"
+            title="Clear tag filter"
+          >
+            Tag: {selectedTag}
+            <X className="w-3 h-3" />
+          </button>
+        )}
+        <a
+          href="/api/export"
+          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#6B6B6B] hover:text-[#4A4A4A] bg-white hover:bg-[#F0EFEA] border border-[#E8E6E1] rounded-xl transition-colors"
+          title="Download every resource and file as a zip backup"
+        >
+          <Download className="w-3.5 h-3.5" />
+          Download everything (.zip)
+        </a>
+      </div>
 
       {/* Grid / List */}
       {filteredResources.length === 0 ? (
@@ -305,6 +445,9 @@ export default function LibraryClient({ initialResources, initialCategory }: { i
                           <h3 className="font-medium text-[#4A4A4A] truncate group-hover:text-[#8F9F8A] transition-colors">
                             {resource.title}
                           </h3>
+                          {isNew(resource) && (
+                            <span className="bg-[#8F9F8A] text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-md flex-shrink-0">NEW</span>
+                          )}
                         </div>
                         {resource.description && (
                           <p className="text-sm text-[#6B6B6B] truncate mt-0.5">{resource.description}</p>
@@ -383,6 +526,9 @@ export default function LibraryClient({ initialResources, initialCategory }: { i
                             <span className="text-xs font-medium text-[#8C8C8C] uppercase tracking-wider">
                               {resource.format}
                             </span>
+                            {isNew(resource) && (
+                              <span className="bg-[#8F9F8A] text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-md">NEW</span>
+                            )}
                           </div>
                           <span className="flex-shrink-0 bg-[#F9F8F6] px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#6B6B6B] border border-[#E8E6E1] max-w-[150px] truncate">
                             {resource.category}
@@ -434,9 +580,14 @@ export default function LibraryClient({ initialResources, initialCategory }: { i
 
                         <div className="flex flex-wrap gap-1.5 mb-4">
                           {resource.tags?.slice(0, 3).map((tag: string) => (
-                            <span key={tag} className="px-2 py-1 bg-[#F9F8F6] rounded-md text-[10px] text-[#8C8C8C] uppercase tracking-wider">
+                            <button
+                              key={tag}
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedTag(tag === selectedTag ? null : tag); }}
+                              className={`px-2 py-1 rounded-md text-[10px] uppercase tracking-wider transition-colors ${tag === selectedTag ? 'bg-[#8F9F8A] text-white' : 'bg-[#F9F8F6] text-[#8C8C8C] hover:bg-[#F0EFEA] hover:text-[#4A4A4A]'}`}
+                              title={`Filter by "${tag}"`}
+                            >
                               {tag}
-                            </span>
+                            </button>
                           ))}
                           {resource.tags?.length > 3 && (
                             <span className="px-2 py-1 bg-[#F9F8F6] rounded-md text-[10px] text-[#8C8C8C] uppercase tracking-wider">
@@ -466,6 +617,56 @@ export default function LibraryClient({ initialResources, initialCategory }: { i
                 </motion.div>
               );
             })}
+          </AnimatePresence>
+        </div>
+      )}
+
+      {/* Recently deleted */}
+      {trash.length > 0 && (
+        <div className="bg-white rounded-3xl border border-[#E8E6E1] overflow-hidden">
+          <button
+            onClick={() => setShowTrash(!showTrash)}
+            className="w-full flex items-center gap-3 px-6 py-4 text-left hover:bg-[#F9F8F6] transition-colors"
+          >
+            <Trash2 className="w-4 h-4 text-[#8C8C8C]" />
+            <span className="text-sm font-medium text-[#6B6B6B]">
+              Recently deleted ({trash.length})
+            </span>
+            <span className="text-xs text-[#8C8C8C] hidden sm:inline">
+              — items are permanently removed after 30 days
+            </span>
+            {showTrash ? <ChevronUp className="w-4 h-4 text-[#8C8C8C] ml-auto" /> : <ChevronDown className="w-4 h-4 text-[#8C8C8C] ml-auto" />}
+          </button>
+          <AnimatePresence>
+            {showTrash && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="px-6 pb-5 space-y-2 border-t border-[#E8E6E1] pt-4">
+                  {trash.map((item) => (
+                    <div key={item.id} className="flex items-center gap-3 px-4 py-3 bg-[#F9F8F6] rounded-xl">
+                      <div className="flex-grow min-w-0">
+                        <p className="text-sm font-medium text-[#4A4A4A] truncate">{item.title}</p>
+                        <p className="text-xs text-[#8C8C8C]">
+                          Deleted {formatDistanceToNow(new Date(item.deletedAt))} ago · {item.category}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleRestore(item.id)}
+                        disabled={restoring === item.id}
+                        className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-white hover:bg-[#F0EFEA] text-[#6B6B6B] border border-[#E8E6E1] rounded-xl transition-colors flex-shrink-0 disabled:opacity-50"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        {restoring === item.id ? 'Restoring…' : 'Restore'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
           </AnimatePresence>
         </div>
       )}

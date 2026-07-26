@@ -1,6 +1,8 @@
 import { db } from '@/db';
 import { resources } from '@/db/schema';
-import { desc } from 'drizzle-orm';
+import { desc, isNull, isNotNull } from 'drizzle-orm';
+import { ensureSchema } from '@/lib/ensure-schema';
+import { runMaintenance } from '@/lib/maintenance';
 import LibraryClient from './LibraryClient';
 
 export const dynamic = 'force-dynamic';
@@ -8,16 +10,32 @@ export const dynamic = 'force-dynamic';
 export default async function LibraryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string }>;
+  searchParams: Promise<{ category?: string; tag?: string; deleted?: string }>;
 }) {
-  const { category } = await searchParams;
+  const { category, tag, deleted } = await searchParams;
 
-  const allResources = await db.query.resources.findMany({
-    with: {
-      comments: true,
-    },
-    orderBy: [desc(resources.addedAt)],
-  });
+  await ensureSchema();
+  runMaintenance(); // fire-and-forget trash purge + orphaned file sweep
 
-  return <LibraryClient initialResources={allResources} initialCategory={category || null} />;
+  const [allResources, trashedResources] = await Promise.all([
+    db.query.resources.findMany({
+      where: isNull(resources.deletedAt),
+      with: { comments: true },
+      orderBy: [desc(resources.addedAt)],
+    }),
+    db.query.resources.findMany({
+      where: isNotNull(resources.deletedAt),
+      orderBy: [desc(resources.deletedAt)],
+    }),
+  ]);
+
+  return (
+    <LibraryClient
+      initialResources={allResources}
+      initialCategory={category || null}
+      initialTag={tag || null}
+      justDeletedId={deleted || null}
+      trashedResources={trashedResources}
+    />
+  );
 }

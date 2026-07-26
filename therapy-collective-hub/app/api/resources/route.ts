@@ -1,10 +1,18 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { resources } from '@/db/schema';
+import { ensureSchema } from '@/lib/ensure-schema';
+import { resourceInputSchema, firstIssue } from '@/lib/validation';
 
 export async function POST(request: Request) {
   try {
-    const data = await request.json();
+    await ensureSchema();
+    const parsed = resourceInputSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
+    }
+    const data = parsed.data;
+
     const [newResource] = await db.insert(resources).values({
       title: data.title,
       url: data.url || null,

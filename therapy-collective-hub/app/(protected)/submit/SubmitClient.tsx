@@ -143,7 +143,8 @@ export default function SubmitClient() {
         const data = await res.json();
         router.push(`/resource/${data.id}`);
       } else {
-        alert('Failed to submit resource');
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'Failed to submit resource');
       }
     } catch (err) {
       console.error(err);
@@ -209,6 +210,7 @@ export default function SubmitClient() {
             <input
               type="text"
               required
+              maxLength={255}
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               className="w-full px-4 py-3 rounded-xl border border-[#E8E6E1] bg-[#FCFCFB] focus:outline-none focus:ring-2 focus:ring-[#8F9F8A]/50 focus:border-[#8F9F8A] transition-all"

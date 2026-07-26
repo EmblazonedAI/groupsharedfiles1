@@ -24,6 +24,8 @@ export const resources = pgTable('resources', {
   folderId: uuid('folder_id').references(() => folders.id, { onDelete: 'set null' }),
   likeCount: integer('like_count').default(0).notNull(),
   loveCount: integer('love_count').default(0).notNull(),
+  // Soft delete: set when moved to "Recently deleted", purged after 30 days
+  deletedAt: timestamp('deleted_at'),
 });
 
 export const comments = pgTable('comments', {

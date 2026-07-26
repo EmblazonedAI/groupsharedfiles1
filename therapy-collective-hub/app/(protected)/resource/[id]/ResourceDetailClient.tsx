@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
@@ -165,6 +166,9 @@ export default function ResourceDetailClient({ initialResource }: { initialResou
         const updated = await res.json();
         setResource((prev: any) => ({ ...prev, ...updated }));
         setIsEditing(false);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'Failed to save changes');
       }
     } catch (err) {
       console.error(err);
@@ -174,11 +178,11 @@ export default function ResourceDetailClient({ initialResource }: { initialResou
   };
 
   const handleDelete = async () => {
-    if (!confirm('Permanently delete this resource and all its comments? This cannot be undone.')) return;
+    if (!confirm('Move this resource to Recently deleted? You can restore it from the library page for 30 days.')) return;
     try {
       const res = await fetch(`/api/resources/${resource.id}`, { method: 'DELETE' });
       if (res.ok) {
-        router.push('/library');
+        router.push(`/library?deleted=${resource.id}`);
       }
     } catch (err) {
       console.error(err);
@@ -251,6 +255,9 @@ export default function ResourceDetailClient({ initialResource }: { initialResou
           comments: [newComment, ...prev.comments],
         }));
         setCommentText('');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'Failed to post comment');
       }
     } catch (err) {
       console.error(err);
@@ -289,6 +296,7 @@ export default function ResourceDetailClient({ initialResource }: { initialResou
                 <label className="block text-sm font-medium text-[#6B6B6B] mb-1">Title</label>
                 <input
                   type="text"
+                  maxLength={255}
                   value={editData.title}
                   onChange={(e) => setEditData({ ...editData, title: e.target.value })}
                   className="w-full px-4 py-3 rounded-xl border border-[#E8E6E1] bg-[#FCFCFB] focus:outline-none focus:ring-2 focus:ring-[#8F9F8A]/50 text-lg"
@@ -512,9 +520,14 @@ export default function ResourceDetailClient({ initialResource }: { initialResou
 
               <div className="flex flex-wrap gap-2 mb-8">
                 {resource.tags?.map((tag: string) => (
-                  <span key={tag} className="px-3 py-1 bg-[#F9F8F6] rounded-lg text-xs font-medium text-[#8C8C8C] uppercase tracking-wider">
+                  <Link
+                    key={tag}
+                    href={`/library?tag=${encodeURIComponent(tag)}`}
+                    className="px-3 py-1 bg-[#F9F8F6] hover:bg-[#8F9F8A] hover:text-white rounded-lg text-xs font-medium text-[#8C8C8C] uppercase tracking-wider transition-colors"
+                    title={`See everything tagged "${tag}"`}
+                  >
                     {tag}
-                  </span>
+                  </Link>
                 ))}
               </div>
 

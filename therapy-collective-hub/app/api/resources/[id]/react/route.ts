@@ -2,9 +2,11 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { resources } from '@/db/schema';
 import { eq, sql } from 'drizzle-orm';
+import { ensureSchema } from '@/lib/ensure-schema';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    await ensureSchema();
     const { id } = await params;
     const { type, action } = await request.json();
 

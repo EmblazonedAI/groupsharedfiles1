@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { categories, resources } from '@/db/schema';
 import { asc, eq } from 'drizzle-orm';
 import { CATEGORIES } from '@/lib/config';
+import { categoryNameSchema, firstIssue } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,14 +35,15 @@ export async function GET() {
 export async function POST(request: Request) {
     try {
         const { name } = await request.json();
-        if (!name?.trim()) {
-            return NextResponse.json({ error: 'Category name required' }, { status: 400 });
+        const parsed = categoryNameSchema.safeParse(name);
+        if (!parsed.success) {
+            return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
         }
         const [created] = await db.insert(categories).values({
-            name: name.trim(),
+            name: parsed.data,
         }).onConflictDoNothing().returning();
 
-        return NextResponse.json(created || { name: name.trim(), existing: true });
+        return NextResponse.json(created || { name: parsed.data, existing: true });
     } catch (error) {
         console.error('Error creating category:', error);
         return NextResponse.json({ error: 'Failed to create category' }, { status: 500 });
@@ -66,21 +68,23 @@ export async function DELETE(request: Request) {
 export async function PUT(request: Request) {
     try {
         const { oldName, newName } = await request.json();
-        if (!oldName?.trim() || !newName?.trim()) {
-            return NextResponse.json({ error: 'Both old and new names required' }, { status: 400 });
+        const parsedOld = categoryNameSchema.safeParse(oldName);
+        const parsedNew = categoryNameSchema.safeParse(newName);
+        if (!parsedOld.success || !parsedNew.success) {
+            return NextResponse.json({ error: 'Both old and new names are required (max 100 characters)' }, { status: 400 });
         }
 
         // Update category in categories table (if it exists there)
         await db.update(categories)
-            .set({ name: newName.trim() })
-            .where(eq(categories.name, oldName.trim()));
+            .set({ name: parsedNew.data })
+            .where(eq(categories.name, parsedOld.data));
 
         // Update all resources that reference the old category name
         await db.update(resources)
-            .set({ category: newName.trim() })
-            .where(eq(resources.category, oldName.trim()));
+            .set({ category: parsedNew.data })
+            .where(eq(resources.category, parsedOld.data));
 
-        return NextResponse.json({ success: true, name: newName.trim() });
+        return NextResponse.json({ success: true, name: parsedNew.data });
     } catch (error) {
         console.error('Error renaming category:', error);
         return NextResponse.json({ error: 'Failed to rename category' }, { status: 500 });

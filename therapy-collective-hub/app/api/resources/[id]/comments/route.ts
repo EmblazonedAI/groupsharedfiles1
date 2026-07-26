@@ -2,11 +2,16 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { comments } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { commentInputSchema, firstIssue } from '@/lib/validation';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const data = await request.json();
+    const parsed = commentInputSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
+    }
+    const data = parsed.data;
 
     const [newComment] = await db.insert(comments).values({
       resourceId: id,
