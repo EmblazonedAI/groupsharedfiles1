@@ -78,6 +78,18 @@ const proxyRequest = async (request: Request, method: 'GET' | 'HEAD') => {
         return NextResponse.json({ error: 'Missing url parameter' }, { status: 400 });
     }
 
+    // Only proxy our own blob storage: this route attaches the storage token
+    // to the outgoing request, so an arbitrary URL would leak it (and allow
+    // server-side request forgery).
+    try {
+        const host = new URL(blobUrl).hostname;
+        if (!host.endsWith('.blob.vercel-storage.com')) {
+            return NextResponse.json({ error: 'URL not allowed' }, { status: 400 });
+        }
+    } catch {
+        return NextResponse.json({ error: 'Invalid url parameter' }, { status: 400 });
+    }
+
     try {
         const response = await fetch(blobUrl, {
             method,

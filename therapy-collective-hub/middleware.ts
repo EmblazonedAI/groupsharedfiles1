@@ -11,8 +11,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Allow public API routes (auth endpoints & migration)
-  if (pathname === '/api/auth/login' || pathname === '/api/auth/logout' || pathname === '/api/seed' || pathname === '/api/migrate') {
+  // Allow public API routes (auth endpoints only)
+  if (pathname === '/api/auth/login' || pathname === '/api/auth/logout') {
     return NextResponse.next();
   }
 
