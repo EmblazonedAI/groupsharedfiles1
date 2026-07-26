@@ -28,11 +28,10 @@ const openInNewTab = (e: React.MouseEvent, url: string) => {
   window.open(url, '_blank', 'noopener,noreferrer');
 };
 
-export default function LibraryClient({ initialResources, folders }: { initialResources: any[], folders: any[] }) {
+export default function LibraryClient({ initialResources, initialCategory }: { initialResources: any[], initialCategory?: string | null }) {
   const [search, setSearch] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(initialCategory || null);
   const [selectedFormat, setSelectedFormat] = useState<string | null>(null);
-  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'title' | 'loved'>('newest');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [allCategories, setAllCategories] = useState<string[]>([]);
@@ -77,8 +76,6 @@ export default function LibraryClient({ initialResources, folders }: { initialRe
     } catch (err) { console.error(err); }
   };
 
-  const hasUnsorted = useMemo(() => initialResources.some(r => !r.folderId), [initialResources]);
-
   const filteredResources = useMemo(() => {
     let result = [...initialResources];
 
@@ -99,14 +96,6 @@ export default function LibraryClient({ initialResources, folders }: { initialRe
       result = result.filter(r => r.format === selectedFormat);
     }
 
-    if (selectedFolder) {
-      if (selectedFolder === 'unsorted') {
-        result = result.filter(r => !r.folderId);
-      } else {
-        result = result.filter(r => r.folderId === selectedFolder);
-      }
-    }
-
     result.sort((a, b) => {
       if (sortBy === 'newest') return new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime();
       if (sortBy === 'oldest') return new Date(a.addedAt).getTime() - new Date(b.addedAt).getTime();
@@ -116,7 +105,7 @@ export default function LibraryClient({ initialResources, folders }: { initialRe
     });
 
     return result;
-  }, [initialResources, search, selectedCategory, selectedFormat, selectedFolder, sortBy]);
+  }, [initialResources, search, selectedCategory, selectedFormat, sortBy]);
 
   const renderThumbnail = (resource: any, className: string, showPageCount = true) => {
     if (resource.blobUrl && isImageUrl(resource.blobUrl)) {
@@ -269,36 +258,6 @@ export default function LibraryClient({ initialResources, folders }: { initialRe
         </button>
       </div>
 
-      {/* Folder Filters */}
-      {folders.length > 0 && (
-        <div className="flex flex-wrap gap-2 items-center -mt-4">
-          <button
-            onClick={() => setSelectedFolder(null)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${!selectedFolder ? 'bg-[#8F9F8A] text-white' : 'bg-white border border-[#E8E6E1] text-[#6B6B6B] hover:bg-[#F0EFEA]'}`}
-          >
-            All Folders
-          </button>
-          {folders.map((folder: any) => (
-            <button
-              key={folder.id}
-              onClick={() => setSelectedFolder(folder.id === selectedFolder ? null : folder.id)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors flex items-center gap-1.5 ${folder.id === selectedFolder ? 'bg-[#8F9F8A] text-white' : 'bg-white border border-[#E8E6E1] text-[#6B6B6B] hover:bg-[#F0EFEA]'}`}
-            >
-              {folder.emoji && <span>{folder.emoji}</span>}
-              <span>{folder.name}</span>
-            </button>
-          ))}
-          {hasUnsorted && (
-            <button
-              onClick={() => setSelectedFolder(selectedFolder === 'unsorted' ? null : 'unsorted')}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${selectedFolder === 'unsorted' ? 'bg-[#8F9F8A] text-white' : 'bg-white border border-dashed border-[#E8E6E1] text-[#8C8C8C] hover:bg-[#F0EFEA]'}`}
-            >
-              Unsorted
-            </button>
-          )}
-        </div>
-      )}
-
       {/* Result count */}
       <p className="text-xs text-[#8C8C8C] -mt-4">
         Showing {filteredResources.length} of {initialResources.length} resources
@@ -346,11 +305,6 @@ export default function LibraryClient({ initialResources, folders }: { initialRe
                           <h3 className="font-medium text-[#4A4A4A] truncate group-hover:text-[#8F9F8A] transition-colors">
                             {resource.title}
                           </h3>
-                          {resource.folder && (
-                            <span className="hidden sm:inline-flex items-center gap-1 bg-[#F9F8F6] px-2 py-0.5 rounded-md text-[10px] font-medium text-[#6B6B6B] border border-[#E8E6E1] flex-shrink-0">
-                              {resource.folder.emoji} {resource.folder.name}
-                            </span>
-                          )}
                         </div>
                         {resource.description && (
                           <p className="text-sm text-[#6B6B6B] truncate mt-0.5">{resource.description}</p>
@@ -378,7 +332,7 @@ export default function LibraryClient({ initialResources, folders }: { initialRe
                           <button
                             onClick={(e) => openInNewTab(e, getBlobProxyUrl(resource.blobUrl))}
                             className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-[#F0EFEA] hover:bg-[#8F9F8A] text-[#8F9F8A] hover:text-white rounded-xl transition-colors"
-                            title={`Open ${getFileName(resource.blobUrl)}`}
+                            title={`Open ${getFileName(resource.blobUrl, resource.title)}`}
                           >
                             <Paperclip className="w-3.5 h-3.5" />
                             <span className="hidden sm:inline">Open {getFileExtension(resource.blobUrl) || 'file'}</span>
@@ -430,12 +384,9 @@ export default function LibraryClient({ initialResources, folders }: { initialRe
                               {resource.format}
                             </span>
                           </div>
-                          {resource.folder && (
-                            <div className="flex flex-shrink-0 items-center space-x-1.5 bg-[#F9F8F6] px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#6B6B6B] border border-[#E8E6E1]">
-                              <span>{resource.folder.emoji}</span>
-                              <span className="break-words max-w-[140px] leading-tight">{resource.folder.name}</span>
-                            </div>
-                          )}
+                          <span className="flex-shrink-0 bg-[#F9F8F6] px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#6B6B6B] border border-[#E8E6E1] max-w-[150px] truncate">
+                            {resource.category}
+                          </span>
                         </div>
 
                         <h3 className="text-lg font-medium text-[#4A4A4A] mb-2 line-clamp-2 group-hover:text-[#8F9F8A] transition-colors">
@@ -451,10 +402,10 @@ export default function LibraryClient({ initialResources, folders }: { initialRe
                           <button
                             onClick={(e) => openInNewTab(e, getBlobProxyUrl(resource.blobUrl))}
                             className="w-full flex items-center gap-2 text-xs text-[#8F9F8A] bg-[#F0EFEA] hover:bg-[#8F9F8A] hover:text-white px-3 py-2 rounded-lg mb-3 transition-colors group/file"
-                            title={`Open ${getFileName(resource.blobUrl)} in a new tab`}
+                            title={`Open ${getFileName(resource.blobUrl, resource.title)} in a new tab`}
                           >
                             <Paperclip className="w-3.5 h-3.5 flex-shrink-0" />
-                            <span className="truncate font-medium">{getFileName(resource.blobUrl)}</span>
+                            <span className="truncate font-medium">{getFileName(resource.blobUrl, resource.title)}</span>
                             <span className="ml-auto flex items-center gap-1 flex-shrink-0 font-semibold uppercase tracking-wider">
                               Open <ExternalLink className="w-3 h-3" />
                             </span>

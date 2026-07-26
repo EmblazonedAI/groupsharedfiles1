@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { CATEGORIES, FORMATS } from '@/lib/config';
 import { Leaf, Link as LinkIcon, Upload, Loader2 } from 'lucide-react';
+import AvatarPicker from '@/components/AvatarPicker';
 
 function CircularProgress({ progress }: { progress: number }) {
   const size = 64;
@@ -31,7 +32,7 @@ function CircularProgress({ progress }: { progress: number }) {
   );
 }
 
-export default function SubmitClient({ folders }: { folders: any[] }) {
+export default function SubmitClient() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [fetchingOg, setFetchingOg] = useState(false);
@@ -48,7 +49,6 @@ export default function SubmitClient({ folders }: { folders: any[] }) {
     category: '',
     format: FORMATS[0],
     addedBy: '',
-    folderId: '',
   });
 
   const [allCategories, setAllCategories] = useState<string[]>([]);
@@ -136,7 +136,6 @@ export default function SubmitClient({ folders }: { folders: any[] }) {
           blobUrl,
           ogImage,
           tags: formData.tags.split(',').map(t => t.trim()).filter(Boolean),
-          folderId: formData.folderId || null,
         }),
       });
 
@@ -226,8 +225,8 @@ export default function SubmitClient({ folders }: { folders: any[] }) {
             />
           </div>
 
-          {/* Category, Format, Folder */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Category & Format */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-[#6B6B6B] mb-2">Category *</label>
               <select
@@ -250,42 +249,27 @@ export default function SubmitClient({ folders }: { folders: any[] }) {
                 {FORMATS.map(f => <option key={f} value={f}>{f}</option>)}
               </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-[#6B6B6B] mb-2">Folder</label>
-              <select
-                value={formData.folderId}
-                onChange={(e) => setFormData({ ...formData, folderId: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl border border-[#E8E6E1] bg-[#FCFCFB] focus:outline-none focus:ring-2 focus:ring-[#8F9F8A]/50 focus:border-[#8F9F8A] transition-all"
-              >
-                <option value="">Unsorted</option>
-                {folders.map(f => <option key={f.id} value={f.id}>{f.emoji} {f.name}</option>)}
-              </select>
-            </div>
           </div>
 
-          {/* Tags & Added By */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-[#6B6B6B] mb-2">Tags (comma-separated)</label>
-              <input
-                type="text"
-                value={formData.tags}
-                onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
-                placeholder="e.g. mindfulness, breathing, teens"
-                className="w-full px-4 py-3 rounded-xl border border-[#E8E6E1] bg-[#FCFCFB] focus:outline-none focus:ring-2 focus:ring-[#8F9F8A]/50 focus:border-[#8F9F8A] transition-all"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-[#6B6B6B] mb-2">Added By (Optional)</label>
-              <input
-                type="text"
-                value={formData.addedBy}
-                onChange={(e) => setFormData({ ...formData, addedBy: e.target.value })}
-                placeholder="Your name"
-                className="w-full px-4 py-3 rounded-xl border border-[#E8E6E1] bg-[#FCFCFB] focus:outline-none focus:ring-2 focus:ring-[#8F9F8A]/50 focus:border-[#8F9F8A] transition-all"
-              />
-            </div>
+          {/* Tags */}
+          <div>
+            <label className="block text-sm font-medium text-[#6B6B6B] mb-2">Tags (comma-separated)</label>
+            <input
+              type="text"
+              value={formData.tags}
+              onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+              placeholder="e.g. mindfulness, breathing, teens"
+              className="w-full px-4 py-3 rounded-xl border border-[#E8E6E1] bg-[#FCFCFB] focus:outline-none focus:ring-2 focus:ring-[#8F9F8A]/50 focus:border-[#8F9F8A] transition-all"
+            />
           </div>
+
+          {/* Anonymous avatar */}
+          <AvatarPicker
+            label="Share as (anonymous avatar)"
+            value={formData.addedBy}
+            onChange={(addedBy) => setFormData({ ...formData, addedBy })}
+          />
+
 
           <div className="pt-4">
             {isUploading ? (

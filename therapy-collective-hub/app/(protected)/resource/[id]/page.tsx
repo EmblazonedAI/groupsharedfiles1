@@ -1,5 +1,5 @@
 import { db } from '@/db';
-import { resources, comments, folders } from '@/db/schema';
+import { resources, comments } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
 import ResourceDetailClient from './ResourceDetailClient';
 import { notFound } from 'next/navigation';
@@ -12,7 +12,6 @@ export default async function ResourceDetailPage({ params }: { params: Promise<{
   const resource = await db.query.resources.findFirst({
     where: eq(resources.id, id),
     with: {
-      folder: true,
       comments: {
         orderBy: [desc(comments.createdAt)],
       },

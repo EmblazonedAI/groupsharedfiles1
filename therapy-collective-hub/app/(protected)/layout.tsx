@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Leaf, Library, PlusCircle, FolderHeart, Info, Menu, X, LogOut } from 'lucide-react';
+import { Leaf, Library, PlusCircle, Tag, Info, Menu, X, LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
@@ -23,7 +23,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   const navItems = [
     { name: 'Library', href: '/library', icon: Library },
     { name: 'Submit', href: '/submit', icon: PlusCircle },
-    { name: 'Folders', href: '/folders', icon: FolderHeart },
+    { name: 'Categories', href: '/categories', icon: Tag },
     { name: 'About', href: '/about', icon: Info },
   ];
 

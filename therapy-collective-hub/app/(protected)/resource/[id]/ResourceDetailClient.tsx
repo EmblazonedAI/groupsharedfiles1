@@ -31,7 +31,9 @@ function CircularProgress({ progress }: { progress: number }) {
   );
 }
 import { CATEGORIES, FORMATS } from '@/lib/config';
-import { isImageUrl, isPdfUrl, getBlobProxyUrl, getFileName, getFileExtension, getDomain } from '@/lib/files';
+import { isImageUrl, getBlobProxyUrl, getFileName, getDomain } from '@/lib/files';
+import FilePreview from '@/components/FilePreview';
+import AvatarPicker, { isEmojiAvatar } from '@/components/AvatarPicker';
 
 const getFormatIcon = (format: string) => {
   switch (format) {
@@ -77,7 +79,6 @@ export default function ResourceDetailClient({ initialResource }: { initialResou
   const [isUploading, setIsUploading] = useState(false);
   const [removeExistingFile, setRemoveExistingFile] = useState(false);
   const [allCategories, setAllCategories] = useState<string[]>([]);
-  const [lightboxOpen, setLightboxOpen] = useState(false);
   const [editData, setEditData] = useState({
     title: '',
     url: '',
@@ -186,7 +187,7 @@ export default function ResourceDetailClient({ initialResource }: { initialResou
 
   const handleReaction = async (type: 'like' | 'love', action: 'add' | 'subtract' = 'add') => {
     try {
-      if (type === 'love' && action === 'add') setShowHeartBloom(true);
+      if (action === 'add') setShowHeartBloom(true);
 
       const res = await fetch(`/api/resources/${resource.id}/react`, {
         method: 'POST',
@@ -203,7 +204,7 @@ export default function ResourceDetailClient({ initialResource }: { initialResou
         }));
       }
 
-      if (type === 'love' && action === 'add') {
+      if (action === 'add') {
         setTimeout(() => setShowHeartBloom(false), 1000);
       }
     } catch (err) {
@@ -396,12 +397,10 @@ export default function ResourceDetailClient({ initialResource }: { initialResou
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-[#6B6B6B] mb-1">Added By</label>
-                  <input
-                    type="text"
+                  <AvatarPicker
+                    label="Shared by"
                     value={editData.addedBy}
-                    onChange={(e) => setEditData({ ...editData, addedBy: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl border border-[#E8E6E1] bg-[#FCFCFB] focus:outline-none focus:ring-2 focus:ring-[#8F9F8A]/50"
+                    onChange={(addedBy) => setEditData({ ...editData, addedBy })}
                   />
                 </div>
               </div>
@@ -452,12 +451,6 @@ export default function ResourceDetailClient({ initialResource }: { initialResou
                 <div className="bg-[#F9F8F6] px-3 py-1.5 rounded-xl text-xs font-medium text-[#6B6B6B]">
                   {resource.category}
                 </div>
-                {resource.folder && (
-                  <div className="flex items-center space-x-1 bg-[#F9F8F6] px-3 py-1.5 rounded-xl text-xs font-medium text-[#6B6B6B]">
-                    <span>{resource.folder.emoji}</span>
-                    <span>{resource.folder.name}</span>
-                  </div>
-                )}
               </div>
 
               <h1 className="text-3xl md:text-4xl font-serif text-[#4A4A4A] mb-4 leading-tight">
@@ -514,87 +507,8 @@ export default function ResourceDetailClient({ initialResource }: { initialResou
                 </div>
               )}
 
-              {/* Inline Image Preview - Reddit/Facebook style */}
-              {resource.blobUrl && isImageUrl(resource.blobUrl) && (
-                <div
-                  className="mb-6 rounded-2xl overflow-hidden border border-[#E8E6E1] cursor-pointer relative group/img"
-                  onClick={() => setLightboxOpen(true)}
-                >
-                  <img
-                    src={getBlobProxyUrl(resource.blobUrl)}
-                    alt={resource.title}
-                    className="w-full object-contain bg-[#F9F8F6]"
-                  />
-                  <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 transition-colors flex items-center justify-center">
-                    <div className="opacity-0 group-hover/img:opacity-100 transition-opacity bg-black/60 text-white px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2">
-                      <Maximize2 className="w-4 h-4" />
-                      Click to view full size
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Inline PDF Preview */}
-              {resource.blobUrl && isPdfUrl(resource.blobUrl) && (
-                <div className="mb-6 rounded-2xl border border-[#E8E6E1] overflow-hidden">
-                  <div className="flex items-center gap-3 px-4 py-3 bg-[#F9F8F6] border-b border-[#E8E6E1]">
-                    <FileText className="w-4 h-4 text-[#8F9F8A] flex-shrink-0" />
-                    <span className="text-sm font-medium text-[#4A4A4A] truncate">{getFileName(resource.blobUrl)}</span>
-                    <div className="ml-auto flex items-center gap-2 flex-shrink-0">
-                      <a
-                        href={getBlobProxyUrl(resource.blobUrl)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#6B6B6B] hover:text-[#4A4A4A] bg-white hover:bg-[#F0EFEA] border border-[#E8E6E1] rounded-lg transition-colors"
-                      >
-                        <Maximize2 className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Open in new tab</span>
-                      </a>
-                      <a
-                        href={getBlobProxyUrl(resource.blobUrl, { download: true })}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[#8F9F8A] hover:bg-[#7A8A75] text-white rounded-lg transition-colors"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Download</span>
-                      </a>
-                    </div>
-                  </div>
-                  <iframe
-                    src={`${getBlobProxyUrl(resource.blobUrl)}#view=FitH`}
-                    title={`Preview of ${getFileName(resource.blobUrl)}`}
-                    className="w-full h-[75vh] bg-white"
-                  />
-                </div>
-              )}
-
-              {/* Non-Image, Non-PDF File Attachment */}
-              {resource.blobUrl && !isImageUrl(resource.blobUrl) && !isPdfUrl(resource.blobUrl) && (
-                <div className="mb-6 flex flex-wrap items-center gap-3 px-5 py-4 bg-[#F9F8F6] rounded-2xl border border-[#E8E6E1]">
-                  <div className="p-2.5 bg-white rounded-xl border border-[#E8E6E1] text-[#8F9F8A]">
-                    <Paperclip className="w-5 h-5" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-[#4A4A4A] truncate">{getFileName(resource.blobUrl)}</p>
-                    <p className="text-xs text-[#8C8C8C]">{getFileExtension(resource.blobUrl) || 'Attached'} file</p>
-                  </div>
-                  <a
-                    href={getBlobProxyUrl(resource.blobUrl)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-[#F0EFEA] text-[#6B6B6B] border border-[#E8E6E1] text-sm rounded-xl font-medium transition-colors"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    Open
-                  </a>
-                  <a
-                    href={getBlobProxyUrl(resource.blobUrl, { download: true })}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#8F9F8A] hover:bg-[#7A8A75] text-white text-sm rounded-xl font-medium transition-colors"
-                  >
-                    <Download className="w-4 h-4" />
-                    Download
-                  </a>
-                </div>
-              )}
+              {/* Attached File Preview (PDF viewer, image, audio/video player, or attachment card) */}
+              {resource.blobUrl && <FilePreview blobUrl={resource.blobUrl} title={resource.title} />}
 
               <div className="flex flex-wrap gap-2 mb-8">
                 {resource.tags?.map((tag: string) => (
@@ -617,25 +531,11 @@ export default function ResourceDetailClient({ initialResource }: { initialResou
                     <button
                       onClick={() => handleReaction('like')}
                       className="flex items-center gap-2 px-3 py-2 bg-[#F9F8F6] hover:bg-[#F0EFEA] text-[#6B6B6B] transition-colors"
+                      title="Like this resource"
                     >
                       <Heart className="w-5 h-5" />
-                      <span className="font-medium">{resource.likeCount}</span>
-                    </button>
-                  </div>
-                  <div className="flex items-center rounded-xl overflow-hidden border border-pink-100">
-                    <button
-                      onClick={() => handleReaction('love', 'subtract')}
-                      className="px-2 py-2 bg-pink-50 hover:bg-pink-100 text-pink-300 transition-colors"
-                      title="Remove love"
-                    >
-                      <Minus className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleReaction('love')}
-                      className="flex items-center gap-2 px-3 py-2 bg-pink-50 hover:bg-pink-100 text-pink-500 transition-colors"
-                    >
-                      <span className="text-xl leading-none">🥰</span>
-                      <span className="font-medium">{resource.loveCount}</span>
+                      {/* Combined with legacy "love" reactions so old counts aren't lost */}
+                      <span className="font-medium">{resource.likeCount + resource.loveCount}</span>
                     </button>
                   </div>
                 </div>
@@ -659,7 +559,9 @@ export default function ResourceDetailClient({ initialResource }: { initialResou
                   )}
                   {resource.blobUrl && (
                     <a
-                      href={isImageUrl(resource.blobUrl) ? getBlobProxyUrl(resource.blobUrl) : getBlobProxyUrl(resource.blobUrl, { download: true })}
+                      href={isImageUrl(resource.blobUrl)
+                        ? getBlobProxyUrl(resource.blobUrl)
+                        : getBlobProxyUrl(resource.blobUrl, { download: true, name: getFileName(resource.blobUrl, resource.title) })}
                       target={isImageUrl(resource.blobUrl) ? '_blank' : undefined}
                       rel="noopener noreferrer"
                       className="flex items-center gap-2 px-6 py-2.5 bg-[#8F9F8A] hover:bg-[#7A8A75] text-white rounded-xl font-medium transition-colors"
@@ -718,13 +620,11 @@ export default function ResourceDetailClient({ initialResource }: { initialResou
                   rows={3}
                   required
                 />
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mt-4 pt-4 border-t border-[#E8E6E1]">
-                  <input
-                    type="text"
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mt-4 pt-4 border-t border-[#E8E6E1]">
+                  <AvatarPicker
+                    label="Comment as"
                     value={commentName}
-                    onChange={(e) => setCommentName(e.target.value)}
-                    placeholder="Your Name (optional)"
-                    className="bg-white px-3 py-1.5 rounded-lg text-sm border border-[#E8E6E1] focus:outline-none focus:ring-2 focus:ring-[#8F9F8A]/50 w-full sm:w-auto"
+                    onChange={setCommentName}
                   />
                   <button
                     type="submit"
@@ -748,11 +648,15 @@ export default function ResourceDetailClient({ initialResource }: { initialResou
                     className="flex gap-4 group/comment"
                   >
                     <div className="w-10 h-10 rounded-full bg-[#F0EFEA] flex items-center justify-center flex-shrink-0">
-                      <User className="w-5 h-5 text-[#8C8C8C]" />
+                      {isEmojiAvatar(comment.name)
+                        ? <span className="text-xl leading-none">{comment.name}</span>
+                        : <User className="w-5 h-5 text-[#8C8C8C]" />}
                     </div>
                     <div className="flex-grow">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-[#4A4A4A]">{comment.name || 'Anonymous'}</span>
+                        <span className="font-medium text-[#4A4A4A]">
+                          {isEmojiAvatar(comment.name) ? 'Anonymous' : (comment.name || 'Anonymous')}
+                        </span>
                         <span className="text-xs text-[#8C8C8C]">
                           {formatDistanceToNow(new Date(comment.createdAt))} ago
                         </span>
@@ -793,8 +697,15 @@ export default function ResourceDetailClient({ initialResource }: { initialResou
             </h4>
             <dl className="space-y-4 text-sm">
               <div>
-                <dt className="text-[#8C8C8C] mb-1">Added By</dt>
-                <dd className="font-medium text-[#4A4A4A]">{resource.addedBy || 'Anonymous'}</dd>
+                <dt className="text-[#8C8C8C] mb-1">Shared By</dt>
+                <dd className="font-medium text-[#4A4A4A]">
+                  {isEmojiAvatar(resource.addedBy) ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span className="w-8 h-8 rounded-full bg-[#F0EFEA] flex items-center justify-center text-lg">{resource.addedBy}</span>
+                      Anonymous
+                    </span>
+                  ) : (resource.addedBy || 'Anonymous')}
+                </dd>
               </div>
               <div>
                 <dt className="text-[#8C8C8C] mb-1">Added On</dt>
@@ -822,34 +733,6 @@ export default function ResourceDetailClient({ initialResource }: { initialResou
         </motion.div>
       </div>
 
-      {/* Lightbox Modal */}
-      <AnimatePresence>
-        {lightboxOpen && resource.blobUrl && isImageUrl(resource.blobUrl) && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
-            onClick={() => setLightboxOpen(false)}
-          >
-            <button
-              onClick={() => setLightboxOpen(false)}
-              className="absolute top-4 right-4 w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center text-white transition-colors"
-            >
-              <X className="w-6 h-6" />
-            </button>
-            <motion.img
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              src={getBlobProxyUrl(resource.blobUrl)}
-              alt={resource.title}
-              className="max-w-full max-h-[90vh] object-contain rounded-lg"
-              onClick={(e) => e.stopPropagation()}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

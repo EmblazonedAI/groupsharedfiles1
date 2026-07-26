@@ -16,7 +16,6 @@ export async function POST(request: Request) {
       format: data.format,
       addedBy: data.addedBy || null,
       notes: data.notes || null,
-      folderId: data.folderId || null,
     }).returning();
 
     return NextResponse.json(newResource);
